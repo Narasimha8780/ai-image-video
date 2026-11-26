@@ -126,6 +126,6 @@ def test_admin_controls(client: TestClient):
     assert ov.status_code == 200
     assert ov.json()["total_users"] >= 2
 
-    toggle = client.post("/api/v1/admin/models/kling", headers=admin_headers, json={"enabled": False})
+    toggle = client.post("/api/v1/admin/models/kling", headers=admin_headers, json={"enabled": True})
     assert toggle.status_code == 200
-    assert toggle.json()["enabled"] is False
+    assert toggle.json()["enabled"] is True

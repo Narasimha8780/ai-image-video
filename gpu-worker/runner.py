@@ -13,6 +13,7 @@ COMFY_URL = "http://127.0.0.1:8188"
 WORK_DIR = Path("/tmp/job_work")
 COMFY_INPUT_DIR = Path("/opt/ComfyUI/input")
 COMFY_OUTPUT_DIR = Path("/opt/ComfyUI/output")
+COMFY_MODELS_DIR = Path("/opt/ComfyUI/models")
 
 
 def update_firestore_job(job_id: str, fields: dict[str, Any]) -> None:
@@ -24,6 +25,29 @@ def update_firestore_job(job_id: str, fields: dict[str, Any]) -> None:
         db.collection("jobs").document(job_id).set(fields, merge=True)
     except Exception as exc:
         print(f"[runner] Warning: Firestore update failed: {exc}", file=sys.stderr)
+
+
+def sync_models_from_gcs(bucket_name: str, workflow: dict[str, Any]) -> None:
+    """Download referenced model checkpoints from gs://<bucket>/models/ into ComfyUI models dir."""
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+
+    # Sync any checkpoint named in CheckpointLoaderSimple nodes
+    for node in workflow.values():
+        if isinstance(node, dict) and node.get("class_type") == "CheckpointLoaderSimple":
+            ckpt_name = node.get("inputs", {}).get("ckpt_name")
+            if not ckpt_name:
+                continue
+            dest = COMFY_MODELS_DIR / "checkpoints" / ckpt_name
+            if dest.exists():
+                continue
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            for prefix in (f"models/checkpoints/{ckpt_name}", f"checkpoints/{ckpt_name}"):
+                blob = bucket.blob(prefix)
+                if blob.exists():
+                    print(f"[runner] Downloading gs://{bucket_name}/{prefix} -> {dest}")
+                    blob.download_to_filename(str(dest))
+                    break
 
 
 def download_gcs_inputs(bucket_name: str, input_uris: list[str]) -> dict[str, Path]:
@@ -117,6 +141,7 @@ def main() -> int:
     downloaded = download_gcs_inputs(bucket_name, input_paths)
 
     workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
+    sync_models_from_gcs(bucket_name, workflow)
     # Inject only validated fields
     if "prompt_node" in workflow and "prompt" in model_config:
         workflow["prompt_node"]["inputs"]["text"] = str(model_config["prompt"])
