@@ -142,12 +142,54 @@ class LocalComfyProvider(VideoProvider):
         return operation.metadata.name if hasattr(operation, "metadata") and operation.metadata else f"crj-{job.id}"
 
     async def get_status(self, provider_job_id: str) -> ProviderStatus:
+        if self.settings.app_env == "gcp" and not self.settings.local_simulate_gpu and "/executions/" in provider_job_id:
+            from google.cloud import run_v2
+
+            client = run_v2.ExecutionsClient()
+            execution = await asyncio.to_thread(client.get_execution, name=provider_job_id)
+            if execution.failed_count > 0 or execution.cancelled_count > 0:
+                return ProviderStatus(
+                    state=JobState.failed,
+                    progress=0,
+                    error_category="gpu_job_failed",
+                    error_message=f"Cloud Run GPU execution failed ({provider_job_id.split('/')[-1]})",
+                )
+            if execution.succeeded_count >= 1:
+                return ProviderStatus(state=JobState.completed, progress=100, message="ComfyUI GPU job finished")
+            return ProviderStatus(state=JobState.running, progress=55, message="Running on Cloud Run GPU...")
+
         return ProviderStatus(state=JobState.completed, progress=100, message="ComfyUI workflow finished")
 
     async def fetch_result(self, provider_job_id: str, job: JobOut) -> ProviderResult:
         storage = get_storage()
         assets: list[AssetRef] = []
         prefix = f"users/{job.user_id}/outputs/{job.id}"
+
+        if self.settings.app_env == "gcp" and not self.settings.local_simulate_gpu:
+            raw_manifest = storage.read_bytes(f"{prefix}/result.json")
+            manifest = json.loads(raw_manifest.decode("utf-8"))
+            for item in manifest.get("assets", []):
+                fname = item["filename"]
+                ext = fname.lower().rsplit(".", 1)[-1] if "." in fname else ""
+                ctype = (
+                    "video/mp4"
+                    if ext == "mp4"
+                    else "image/png"
+                    if ext == "png"
+                    else "image/gif"
+                    if ext == "gif"
+                    else "application/octet-stream"
+                )
+                assets.append(
+                    AssetRef(
+                        asset_id=f"ast-{uuid.uuid4().hex[:12]}",
+                        object_path=item["object_path"],
+                        content_type=ctype,
+                        filename=fname,
+                        size_bytes=int(item.get("size_bytes", 0)),
+                    )
+                )
+            return ProviderResult(assets=assets, metadata=manifest)
 
         if job.job_type == JobType.image:
             count = int(job.params.get("num_outputs", 1))

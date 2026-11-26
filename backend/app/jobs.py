@@ -206,7 +206,11 @@ async def run_job_execution(job_id: str) -> None:
         await asyncio.sleep(0.8)
 
         # Poll provider status
-        for _ in range(30):
+        settings = get_settings()
+        is_gcp_real = settings.app_env == "gcp" and not settings.local_simulate_gpu
+        max_polls = 720 if is_gcp_real else 30
+        poll_interval = 5.0 if is_gcp_real else 0.5
+        for _ in range(max_polls):
             current = store.get_job(job_id)
             if not current or current.state == JobState.cancelled:
                 return
@@ -220,7 +224,7 @@ async def run_job_execution(job_id: str) -> None:
                 progress=max(45, min(85, pstatus.progress)),
                 status_message=pstatus.message or "Processing...",
             )
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(poll_interval)
 
         store.update_job(
             job_id,

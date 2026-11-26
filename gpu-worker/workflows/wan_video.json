@@ -1,37 +1,84 @@
 {
-  "_comment": "Wan 2.2 TI2V-5B short clip workflow for NVIDIA L4 (720p working resolution)",
+  "unet_loader": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "clip_loader": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "vae_loader": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan2.2_vae.safetensors"
+    }
+  },
   "prompt_node": {
     "class_type": "CLIPTextEncode",
-    "inputs": { "text": "" }
+    "inputs": {
+      "text": "",
+      "clip": ["clip_loader", 0]
+    }
   },
   "negative_node": {
     "class_type": "CLIPTextEncode",
-    "inputs": { "text": "" }
+    "inputs": {
+      "text": "flicker, distortion, low quality, watermark, text",
+      "clip": ["clip_loader", 0]
+    }
   },
-  "image_loader": {
-    "class_type": "LoadImage",
-    "inputs": { "image": "reference.png" }
+  "latent_video": {
+    "class_type": "EmptyHunyuanLatentVideo",
+    "inputs": {
+      "width": 704,
+      "height": 1280,
+      "length": 121,
+      "batch_size": 1
+    }
   },
   "sampler_node": {
-    "class_type": "Wan22TI2VSampler",
+    "class_type": "KSampler",
     "inputs": {
       "seed": 42,
-      "steps": 24,
-      "width": 720,
-      "height": 1280,
-      "num_frames": 125,
+      "steps": 20,
+      "cfg": 5.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["unet_loader", 0],
       "positive": ["prompt_node", 0],
       "negative": ["negative_node", 0],
-      "reference_image": ["image_loader", 0]
+      "latent_image": ["latent_video", 0]
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["sampler_node", 0],
+      "vae": ["vae_loader", 0]
     }
   },
   "save_video": {
     "class_type": "VHS_VideoCombine",
     "inputs": {
-      "images": ["sampler_node", 0],
-      "frame_rate": 25,
+      "images": ["vae_decode", 0],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "wan_cinematic",
       "format": "video/h264-mp4",
-      "filename_prefix": "wan_cinematic"
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true
     }
   }
 }

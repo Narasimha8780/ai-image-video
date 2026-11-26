@@ -37,22 +37,32 @@ def update_firestore_job(job_id: str, fields: dict[str, Any]) -> None:
 
 
 def sync_models_from_gcs(bucket_name: str, workflow: dict[str, Any]) -> None:
-    """Download referenced model checkpoints from gs://<bucket>/models/ into ComfyUI models dir."""
+    """Download referenced model weights from gs://<bucket>/models/ into ComfyUI models dir."""
     client = storage.Client()
     bucket = client.bucket(bucket_name)
 
-    # Sync any checkpoint named in CheckpointLoaderSimple nodes
+    loader_specs = [
+        ("CheckpointLoaderSimple", "ckpt_name", "checkpoints"),
+        ("UNETLoader", "unet_name", "diffusion_models"),
+        ("CLIPLoader", "clip_name", "text_encoders"),
+        ("VAELoader", "vae_name", "vae"),
+    ]
     for node in workflow.values():
-        if isinstance(node, dict) and node.get("class_type") == "CheckpointLoaderSimple":
-            ckpt_name = node.get("inputs", {}).get("ckpt_name")
-            if not ckpt_name:
+        if not isinstance(node, dict):
+            continue
+        ctype = node.get("class_type")
+        for expected_type, input_key, subdir in loader_specs:
+            if ctype != expected_type:
                 continue
-            dest = COMFY_MODELS_DIR / "checkpoints" / ckpt_name
+            model_name = node.get("inputs", {}).get(input_key)
+            if not model_name:
+                continue
+            dest = COMFY_MODELS_DIR / subdir / model_name
             if dest.exists():
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             found = False
-            for prefix in (f"models/checkpoints/{ckpt_name}", f"checkpoints/{ckpt_name}"):
+            for prefix in (f"models/{subdir}/{model_name}", f"{subdir}/{model_name}"):
                 blob = bucket.blob(prefix)
                 if blob.exists():
                     print(f"[runner] Downloading gs://{bucket_name}/{prefix} -> {dest}")
@@ -61,8 +71,8 @@ def sync_models_from_gcs(bucket_name: str, workflow: dict[str, Any]) -> None:
                     break
             if not found:
                 raise FileNotFoundError(
-                    f"Checkpoint '{ckpt_name}' not found in gs://{bucket_name}/models/checkpoints/{ckpt_name}. "
-                    f"Upload the model weights to gs://{bucket_name}/models/checkpoints/ first."
+                    f"Model '{model_name}' not found in gs://{bucket_name}/models/{subdir}/{model_name}. "
+                    f"Upload the model weights to gs://{bucket_name}/models/{subdir}/ first."
                 )
 
 
@@ -172,6 +182,29 @@ def main() -> int:
     if "image_loader" in workflow and model_config.get("reference_image_path"):
         workflow["image_loader"]["inputs"]["image"] = downloaded[model_config["reference_image_path"]].name
 
+    if workflow_name == "wan_video.json" and "latent_video" in workflow:
+        wan_dims = {"9:16": (704, 1280), "16:9": (1280, 704), "1:1": (704, 704)}
+        w, h = wan_dims.get(model_config.get("aspect_ratio", "9:16"), (704, 1280))
+        dur = int(model_config.get("duration_seconds", 5))
+        length = min(121, max(25, ((dur * 24) // 4) * 4 + 1))
+        workflow["latent_video"]["inputs"]["width"] = w
+        workflow["latent_video"]["inputs"]["height"] = h
+        workflow["latent_video"]["inputs"]["length"] = length
+        if model_config.get("reference_image_path"):
+            ref_name = downloaded[model_config["reference_image_path"]].name
+            workflow["image_loader"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
+            workflow["latent_video"] = {
+                "class_type": "Wan22ImageToVideoLatent",
+                "inputs": {
+                    "vae": ["vae_loader", 0],
+                    "start_image": ["image_loader", 0],
+                    "width": w,
+                    "height": h,
+                    "length": length,
+                    "batch_size": 1,
+                },
+            }
+
     prompt_id = submit_comfy_workflow(workflow)
     history = poll_comfy_history(prompt_id)
 
@@ -197,7 +230,13 @@ def main() -> int:
 
                 obj_path = f"{output_prefix}/{local_file.name}"
                 bucket.blob(obj_path).upload_from_filename(str(local_file))
-                uploaded_assets.append({"filename": local_file.name, "object_path": obj_path})
+                uploaded_assets.append(
+                    {
+                        "filename": local_file.name,
+                        "object_path": obj_path,
+                        "size_bytes": local_file.stat().st_size,
+                    }
+                )
 
     manifest = {"job_id": job_id, "workflow": workflow_name, "assets": uploaded_assets}
     bucket.blob(f"{output_prefix}/result.json").upload_from_string(
