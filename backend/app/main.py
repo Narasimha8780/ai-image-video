@@ -55,7 +55,11 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    return JSONResponse(status_code=500, content={"detail": f"Internal error: {exc}"})
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal error: {exc}"},
+        headers={"Access-Control-Allow-Origin": "*"},
+    )
 
 
 @app.get("/healthz")

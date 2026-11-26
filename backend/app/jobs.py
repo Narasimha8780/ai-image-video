@@ -147,23 +147,30 @@ async def create_and_enqueue_job(user: UserOut, req: JobCreateRequest) -> JobOut
 
 async def enqueue_job_dispatch(job_id: str) -> None:
     settings = get_settings()
-    if settings.app_env == "gcp" and not settings.local_simulate_gpu:
-        from google.cloud import tasks_v2
+    if (
+        settings.app_env == "gcp"
+        and not settings.local_simulate_gpu
+        and settings.backend_public_url.startswith("https://")
+    ):
+        try:
+            from google.cloud import tasks_v2
 
-        client = tasks_v2.CloudTasksClient()
-        parent = client.queue_path(settings.gcp_project_id, settings.gcp_region, settings.cloud_tasks_queue)
-        task = {
-            "http_request": {
-                "http_method": tasks_v2.HttpMethod.POST,
-                "url": f"{settings.backend_public_url}/api/v1/internal/dispatch/{job_id}",
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"job_id": job_id}).encode("utf-8"),
+            client = tasks_v2.CloudTasksClient()
+            parent = client.queue_path(settings.gcp_project_id, settings.gcp_region, settings.cloud_tasks_queue)
+            task = {
+                "http_request": {
+                    "http_method": tasks_v2.HttpMethod.POST,
+                    "url": f"{settings.backend_public_url}/api/v1/internal/dispatch/{job_id}",
+                    "headers": {"Content-Type": "application/json"},
+                    "body": json.dumps({"job_id": job_id}).encode("utf-8"),
+                }
             }
-        }
-        await asyncio.to_thread(client.create_task, request={"parent": parent, "task": task})
-        return
+            await asyncio.to_thread(client.create_task, request={"parent": parent, "task": task})
+            return
+        except Exception as exc:
+            print(f"[jobs] Cloud Tasks dispatch failed, falling back to in-process async dispatch: {exc}")
 
-    # Local dev async execution
+    # Local dev or direct Cloud Run dispatch fallback
     asyncio.create_task(run_job_execution(job_id))
 
 
