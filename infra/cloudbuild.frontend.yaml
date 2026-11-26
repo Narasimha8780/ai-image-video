@@ -22,12 +22,12 @@ steps:
       - -ceu
       - |
         API_URL="${_API_URL}"
-        if [ -z "$API_URL" ]; then
-          API_URL="$(gcloud run services describe ai-studio-api --region=${_REGION} --format='value(status.url)' 2>/dev/null || true)"
+        if [ -z "$$API_URL" ]; then
+          API_URL="$$(gcloud run services describe ai-studio-api --region=${_REGION} --format='value(status.url)' 2>/dev/null || true)"
         fi
-        echo "Building Dashboard with VITE_API_BASE_URL=${API_URL}"
+        echo "Building Dashboard with VITE_API_BASE_URL=$${API_URL}"
         docker build \
-          --build-arg "VITE_API_BASE_URL=${API_URL}" \
+          --build-arg "VITE_API_BASE_URL=$${API_URL}" \
           -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}" \
           ./frontend
 
