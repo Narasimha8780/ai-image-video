@@ -7,7 +7,7 @@
 
 substitutions:
   _REGION: us-central1
-  _AR_REPO: ai-studio
+  _AR_REPO: ai-image-video
   _TAG: v1
   _API_URL: ""
 

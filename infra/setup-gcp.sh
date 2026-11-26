@@ -7,7 +7,7 @@ set -euo pipefail
 PROJECT_ID="${PROJECT_ID:?Set PROJECT_ID}"
 REGION="${REGION:-us-central1}"
 BUCKET="${BUCKET:-ai-models}"
-AR_REPO="ai-studio"
+AR_REPO="${AR_REPO:-ai-image-video}"
 QUEUE_NAME="ai-studio-jobs"
 
 gcloud config set project "$PROJECT_ID"
