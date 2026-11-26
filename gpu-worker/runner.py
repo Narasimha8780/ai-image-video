@@ -193,17 +193,7 @@ def main() -> int:
         if model_config.get("reference_image_path"):
             ref_name = downloaded[model_config["reference_image_path"]].name
             workflow["image_loader"] = {"class_type": "LoadImage", "inputs": {"image": ref_name}}
-            workflow["latent_video"] = {
-                "class_type": "Wan22ImageToVideoLatent",
-                "inputs": {
-                    "vae": ["vae_loader", 0],
-                    "start_image": ["image_loader", 0],
-                    "width": w,
-                    "height": h,
-                    "length": length,
-                    "batch_size": 1,
-                },
-            }
+            workflow["latent_video"]["inputs"]["start_image"] = ["image_loader", 0]
 
     prompt_id = submit_comfy_workflow(workflow)
     history = poll_comfy_history(prompt_id)

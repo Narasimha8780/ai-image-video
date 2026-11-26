@@ -6,6 +6,13 @@
       "weight_dtype": "default"
     }
   },
+  "model_sampling": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "shift": 8.0,
+      "model": ["unet_loader", 0]
+    }
+  },
   "clip_loader": {
     "class_type": "CLIPLoader",
     "inputs": {
@@ -30,13 +37,14 @@
   "negative_node": {
     "class_type": "CLIPTextEncode",
     "inputs": {
-      "text": "flicker, distortion, low quality, watermark, text",
+      "text": "overexposed, static, blurred details, subtitles, worst quality, low quality, JPEG compression, ugly, deformed, extra fingers, flicker, watermark, text",
       "clip": ["clip_loader", 0]
     }
   },
   "latent_video": {
-    "class_type": "EmptyHunyuanLatentVideo",
+    "class_type": "Wan22ImageToVideoLatent",
     "inputs": {
+      "vae": ["vae_loader", 0],
       "width": 704,
       "height": 1280,
       "length": 121,
@@ -47,12 +55,12 @@
     "class_type": "KSampler",
     "inputs": {
       "seed": 42,
-      "steps": 20,
+      "steps": 30,
       "cfg": 5.0,
-      "sampler_name": "uni_pc",
+      "sampler_name": "euler",
       "scheduler": "simple",
       "denoise": 1.0,
-      "model": ["unet_loader", 0],
+      "model": ["model_sampling", 0],
       "positive": ["prompt_node", 0],
       "negative": ["negative_node", 0],
       "latent_image": ["latent_video", 0]
