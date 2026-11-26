@@ -4,7 +4,7 @@
 
 substitutions:
   _REGION: us-central1
-  _AR_REPO: ai-image-video
+  _AR_REPO: narasimha8780
   _TAG: v1
   _BUCKET: ai-models
 
