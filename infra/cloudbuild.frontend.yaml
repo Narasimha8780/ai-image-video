@@ -15,8 +15,8 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  - id: build-dashboard
-    name: gcr.io/cloud-builders/docker
+  - id: resolve-api-url
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: bash
     args:
       - -ceu
@@ -25,7 +25,17 @@ steps:
         if [ -z "$$API_URL" ]; then
           API_URL="$$(gcloud run services describe ai-studio-api --region=${_REGION} --format='value(status.url)' 2>/dev/null || true)"
         fi
-        echo "Building Dashboard with VITE_API_BASE_URL=$${API_URL}"
+        echo -n "$$API_URL" > /workspace/api_url.txt
+        echo "Resolved API URL: $$API_URL"
+
+  - id: build-dashboard
+    name: gcr.io/cloud-builders/docker
+    waitFor: [resolve-api-url]
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        API_URL="$$(cat /workspace/api_url.txt)"
         docker build \
           --build-arg "VITE_API_BASE_URL=$${API_URL}" \
           -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}" \
@@ -40,6 +50,7 @@ steps:
 
   - id: deploy-dashboard-service
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
     waitFor: [push-dashboard]
     args:
       - run

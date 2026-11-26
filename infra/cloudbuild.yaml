@@ -91,6 +91,7 @@ steps:
   # 5. Deploy Cloud Run Service: Dashboard UI
   - id: deploy-dashboard-service
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
     waitFor: [build-dashboard]
     args:
       - run
@@ -105,6 +106,7 @@ steps:
   # 6. Deploy Cloud Run GPU Job: Image Worker (NVIDIA L4)
   - id: deploy-gpu-image-job
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
     waitFor: [push-gpu-worker]
     args:
       - run
@@ -128,6 +130,7 @@ steps:
   # 7. Deploy Cloud Run GPU Job: Video Worker (NVIDIA L4)
   - id: deploy-gpu-video-job
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
     waitFor: [push-gpu-worker]
     args:
       - run

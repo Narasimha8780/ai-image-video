@@ -30,6 +30,7 @@ steps:
 
   - id: deploy-gpu-image-job
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
     waitFor: [push-gpu-worker]
     args:
       - run
@@ -52,6 +53,7 @@ steps:
 
   - id: deploy-gpu-video-job
     name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
     waitFor: [push-gpu-worker]
     args:
       - run
