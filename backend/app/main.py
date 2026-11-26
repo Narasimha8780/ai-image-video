@@ -3,7 +3,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 
 from .auth import (
     create_access_token,
@@ -51,6 +51,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(status_code=500, content={"detail": f"Internal error: {exc}"})
 
 
 @app.get("/healthz")

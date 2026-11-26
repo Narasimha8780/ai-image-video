@@ -19,11 +19,19 @@ from .models import (
 class FirestoreStore:
     """Firestore Native mode store for Cloud Run production deployment."""
 
-    def __init__(self, project_id: str) -> None:
+    def __init__(self, project_id: str, database: str = "(default)") -> None:
         from google.cloud import firestore
 
-        self.db = firestore.Client(project=project_id)
-        self._seed_defaults()
+        self.db = firestore.Client(project=project_id, database=database)
+        try:
+            self._seed_defaults()
+        except Exception:
+            if database == "(default)":
+                # Fallback in case the database was created with ID "default" instead of "(default)"
+                self.db = firestore.Client(project=project_id, database="default")
+                self._seed_defaults()
+            else:
+                raise
 
     def _seed_defaults(self) -> None:
         for model in DEFAULT_MODELS:

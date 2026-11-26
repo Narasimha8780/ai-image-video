@@ -576,5 +576,5 @@ def get_store() -> LocalStore:
     if settings.app_env == "gcp":
         from .firestore_store import FirestoreStore
 
-        return FirestoreStore(settings.gcp_project_id)  # type: ignore[return-value]
+        return FirestoreStore(settings.gcp_project_id, database=settings.firestore_database)  # type: ignore[return-value]
     return LocalStore(settings.local_db_path)

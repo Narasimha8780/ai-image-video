@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # GCP settings
     gcp_project_id: str = "ai-creator-studio-123456"
     gcp_region: str = "us-central1"
+    firestore_database: str = "(default)"
     gcs_bucket: str = "ai-models"
     cloud_tasks_queue: str = "ai-studio-jobs"
     cloud_run_image_job: str = "ai-image-worker"
