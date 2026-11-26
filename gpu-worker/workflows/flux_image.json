@@ -1,0 +1,41 @@
+{
+  "checkpoint_loader": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": { "ckpt_name": "flux1-schnell-fp8.safetensors" }
+  },
+  "prompt_node": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "", "clip": ["checkpoint_loader", 1] }
+  },
+  "negative_node": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "", "clip": ["checkpoint_loader", 1] }
+  },
+  "latent_image": {
+    "class_type": "EmptyLatentImage",
+    "inputs": { "width": 896, "height": 1120, "batch_size": 1 }
+  },
+  "sampler_node": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 42,
+      "steps": 4,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["checkpoint_loader", 0],
+      "positive": ["prompt_node", 0],
+      "negative": ["negative_node", 0],
+      "latent_image": ["latent_image", 0]
+    }
+  },
+  "vae_decode": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["sampler_node", 0], "vae": ["checkpoint_loader", 2] }
+  },
+  "save_image": {
+    "class_type": "SaveImage",
+    "inputs": { "filename_prefix": "flux_creator", "images": ["vae_decode", 0] }
+  }
+}

@@ -1,0 +1,79 @@
+# Dedicated Cloud Build pipeline for Dashboard & Backend API Cloud Run Services
+# Run with:
+#   gcloud builds submit --config infra/cloudbuild.dashboard.yaml .
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: ai-studio
+  _TAG: v1
+  _CLOUD_TASKS_QUEUE: ai-studio-jobs
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build-backend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+      - ./backend
+
+  - id: push-backend
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-backend]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+
+  - id: deploy-api-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [push-backend]
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy ai-studio-api \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG} \
+          --region=${_REGION} \
+          --service-account=ai-api@${PROJECT_ID}.iam.gserviceaccount.com \
+          --allow-unauthenticated \
+          --port=8080 \
+          --cpu=2 --memory=2Gi \
+          --set-env-vars="APP_ENV=gcp,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCS_BUCKET=${PROJECT_ID}-creator-assets,CLOUD_TASKS_QUEUE=${_CLOUD_TASKS_QUEUE},CLOUD_RUN_IMAGE_JOB=ai-image-worker,CLOUD_RUN_VIDEO_JOB=ai-video-worker,LOCAL_SIMULATE_GPU=false,CORS_ORIGINS=*"
+
+        gcloud run services describe ai-studio-api \
+          --region=${_REGION} \
+          --format='value(status.url)' > /workspace/api_url.txt
+
+  - id: build-dashboard
+    name: gcr.io/cloud-builders/docker
+    waitFor: [deploy-api-service]
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        API_URL="$(cat /workspace/api_url.txt)"
+        docker build \
+          --build-arg "VITE_API_BASE_URL=${API_URL}" \
+          -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}" \
+          ./frontend
+        docker push "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}"
+
+  - id: deploy-dashboard-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [build-dashboard]
+    args:
+      - run
+      - deploy
+      - ai-studio-dashboard
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
+      - --region=${_REGION}
+      - --service-account=ai-web@${PROJECT_ID}.iam.gserviceaccount.com
+      - --allow-unauthenticated
+      - --port=8080
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}

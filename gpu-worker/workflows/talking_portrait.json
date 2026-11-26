@@ -1,0 +1,30 @@
+{
+  "_comment": "Talking-head portrait pipeline: LivePortrait + MuseTalk audio-driven animation",
+  "image_loader": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "portrait.png" }
+  },
+  "audio_loader": {
+    "class_type": "LoadAudio",
+    "inputs": { "audio": "speech.wav" }
+  },
+  "talking_head": {
+    "class_type": "LivePortraitMuseTalkNode",
+    "inputs": {
+      "portrait": ["image_loader", 0],
+      "audio": ["audio_loader", 0],
+      "fps": 25,
+      "lip_sync_refine": true
+    }
+  },
+  "save_video": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["talking_head", 0],
+      "audio": ["audio_loader", 0],
+      "frame_rate": 25,
+      "format": "video/h264-mp4",
+      "filename_prefix": "talking_portrait"
+    }
+  }
+}

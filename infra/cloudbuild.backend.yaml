@@ -1,0 +1,48 @@
+# Separate Cloud Build pipeline for Backend API (Cloud Run Service: ai-studio-api)
+# Usage:
+#   gcloud builds submit --config infra/cloudbuild.backend.yaml .
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: ai-studio
+  _TAG: v1
+  _BUCKET: ai-models
+  _CLOUD_TASKS_QUEUE: ai-studio-jobs
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build-backend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+      - ./backend
+
+  - id: push-backend
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-backend]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+
+  - id: deploy-api-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [push-backend]
+    args:
+      - run
+      - deploy
+      - ai-studio-api
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+      - --region=${_REGION}
+      - --service-account=ai-api@${PROJECT_ID}.iam.gserviceaccount.com
+      - --allow-unauthenticated
+      - --port=8080
+      - --cpu=2
+      - --memory=2Gi
+      - --set-env-vars=APP_ENV=gcp,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCS_BUCKET=${_BUCKET},CLOUD_TASKS_QUEUE=${_CLOUD_TASKS_QUEUE},CLOUD_RUN_IMAGE_JOB=ai-image-worker,CLOUD_RUN_VIDEO_JOB=ai-video-worker,LOCAL_SIMULATE_GPU=false,CORS_ORIGINS=*
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}

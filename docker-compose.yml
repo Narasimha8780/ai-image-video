@@ -1,0 +1,21 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8080"
+    environment:
+      APP_ENV: local
+      LOCAL_SIMULATE_GPU: "true"
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+    volumes:
+      - ./local_data:/app/local_data
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend

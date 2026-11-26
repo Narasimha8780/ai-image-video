@@ -1,0 +1,55 @@
+# Separate Cloud Build pipeline for Dashboard UI (Cloud Run Service: ai-studio-dashboard)
+# Automatically reads ai-studio-api URL if _API_URL is not passed.
+# Usage:
+#   gcloud builds submit --config infra/cloudbuild.frontend.yaml .
+#   # or override API URL:
+#   gcloud builds submit --config infra/cloudbuild.frontend.yaml --substitutions=_API_URL=https://ai-studio-api-xxx.a.run.app .
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: ai-studio
+  _TAG: v1
+  _API_URL: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  - id: build-dashboard
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        API_URL="${_API_URL}"
+        if [ -z "$API_URL" ]; then
+          API_URL="$(gcloud run services describe ai-studio-api --region=${_REGION} --format='value(status.url)' 2>/dev/null || true)"
+        fi
+        echo "Building Dashboard with VITE_API_BASE_URL=${API_URL}"
+        docker build \
+          --build-arg "VITE_API_BASE_URL=${API_URL}" \
+          -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}" \
+          ./frontend
+
+  - id: push-dashboard
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-dashboard]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
+
+  - id: deploy-dashboard-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [push-dashboard]
+    args:
+      - run
+      - deploy
+      - ai-studio-dashboard
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
+      - --region=${_REGION}
+      - --service-account=ai-web@${PROJECT_ID}.iam.gserviceaccount.com
+      - --allow-unauthenticated
+      - --port=8080
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}

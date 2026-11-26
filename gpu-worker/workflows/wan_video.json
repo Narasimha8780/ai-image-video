@@ -1,0 +1,37 @@
+{
+  "_comment": "Wan 2.2 TI2V-5B short clip workflow for NVIDIA L4 (720p working resolution)",
+  "prompt_node": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "" }
+  },
+  "negative_node": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "" }
+  },
+  "image_loader": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "reference.png" }
+  },
+  "sampler_node": {
+    "class_type": "Wan22TI2VSampler",
+    "inputs": {
+      "seed": 42,
+      "steps": 24,
+      "width": 720,
+      "height": 1280,
+      "num_frames": 125,
+      "positive": ["prompt_node", 0],
+      "negative": ["negative_node", 0],
+      "reference_image": ["image_loader", 0]
+    }
+  },
+  "save_video": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": ["sampler_node", 0],
+      "frame_rate": 25,
+      "format": "video/h264-mp4",
+      "filename_prefix": "wan_cinematic"
+    }
+  }
+}

@@ -1,0 +1,154 @@
+# Full Cloud Build pipeline:
+# 1. Builds & pushes Backend API, GPU Worker, and Dashboard images to Artifact Registry
+# 2. Deploys Cloud Run Service: ai-studio-api
+# 3. Deploys Cloud Run Service: ai-studio-dashboard (wired to ai-studio-api URL)
+# 4. Deploys Cloud Run GPU Jobs: ai-image-worker & ai-video-worker (NVIDIA L4)
+#
+# Run with:
+#   gcloud builds submit --config infra/cloudbuild.yaml .
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: ai-studio
+  _TAG: v1
+  _BUCKET: ai-models
+  _CLOUD_TASKS_QUEUE: ai-studio-jobs
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+steps:
+  # 1. Build Backend API image
+  - id: build-backend
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+      - ./backend
+
+  # 2. Build GPU Worker image (ComfyUI + L4 batch runner)
+  - id: build-gpu-worker
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
+      - ./gpu-worker
+
+  - id: push-backend
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-backend]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+
+  - id: push-gpu-worker
+    name: gcr.io/cloud-builders/docker
+    waitFor: [build-gpu-worker]
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
+
+  # 3. Deploy Cloud Run Service: Backend API
+  - id: deploy-api-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [push-backend]
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        gcloud run deploy ai-studio-api \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG} \
+          --region=${_REGION} \
+          --service-account=ai-api@${PROJECT_ID}.iam.gserviceaccount.com \
+          --allow-unauthenticated \
+          --port=8080 \
+          --cpu=2 --memory=2Gi \
+          --set-env-vars="APP_ENV=gcp,GCP_PROJECT_ID=${PROJECT_ID},GCP_REGION=${_REGION},GCS_BUCKET=${_BUCKET},CLOUD_TASKS_QUEUE=${_CLOUD_TASKS_QUEUE},CLOUD_RUN_IMAGE_JOB=ai-image-worker,CLOUD_RUN_VIDEO_JOB=ai-video-worker,LOCAL_SIMULATE_GPU=false,CORS_ORIGINS=*"
+
+        gcloud run services describe ai-studio-api \
+          --region=${_REGION} \
+          --format='value(status.url)' > /workspace/api_url.txt
+        echo "API URL: $(cat /workspace/api_url.txt)"
+
+  # 4. Build & Push Dashboard React SPA with live API URL
+  - id: build-dashboard
+    name: gcr.io/cloud-builders/docker
+    waitFor: [deploy-api-service]
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        API_URL="$(cat /workspace/api_url.txt)"
+        docker build \
+          --build-arg "VITE_API_BASE_URL=${API_URL}" \
+          -t "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}" \
+          ./frontend
+        docker push "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}"
+
+  # 5. Deploy Cloud Run Service: Dashboard UI
+  - id: deploy-dashboard-service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [build-dashboard]
+    args:
+      - run
+      - deploy
+      - ai-studio-dashboard
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
+      - --region=${_REGION}
+      - --service-account=ai-web@${PROJECT_ID}.iam.gserviceaccount.com
+      - --allow-unauthenticated
+      - --port=8080
+
+  # 6. Deploy Cloud Run GPU Job: Image Worker (NVIDIA L4)
+  - id: deploy-gpu-image-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [push-gpu-worker]
+    args:
+      - run
+      - jobs
+      - deploy
+      - ai-image-worker
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
+      - --region=${_REGION}
+      - --service-account=ai-gpu-job@${PROJECT_ID}.iam.gserviceaccount.com
+      - --cpu=4
+      - --memory=16Gi
+      - --gpu=1
+      - --gpu-type=nvidia-l4
+      - --no-gpu-zonal-redundancy
+      - --tasks=1
+      - --parallelism=1
+      - --max-retries=1
+      - --task-timeout=3600
+      - --set-env-vars=GCP_PROJECT_ID=${PROJECT_ID},GCS_BUCKET=${_BUCKET}
+
+  # 7. Deploy Cloud Run GPU Job: Video Worker (NVIDIA L4)
+  - id: deploy-gpu-video-job
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    waitFor: [push-gpu-worker]
+    args:
+      - run
+      - jobs
+      - deploy
+      - ai-video-worker
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
+      - --region=${_REGION}
+      - --service-account=ai-gpu-job@${PROJECT_ID}.iam.gserviceaccount.com
+      - --cpu=4
+      - --memory=16Gi
+      - --gpu=1
+      - --gpu-type=nvidia-l4
+      - --no-gpu-zonal-redundancy
+      - --tasks=1
+      - --parallelism=1
+      - --max-retries=1
+      - --task-timeout=3600
+      - --set-env-vars=GCP_PROJECT_ID=${PROJECT_ID},GCS_BUCKET=${_BUCKET}
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
