@@ -93,23 +93,38 @@ class StorageService:
         )
         return f"/api/v1/local-storage/upload/{token}", {"Content-Type": content_type}
 
-    def create_signed_download_url(self, object_path: str, filename: Optional[str] = None) -> str:
+    def create_signed_download_url(
+        self, object_path: str, filename: Optional[str] = None, proxy_base_url: str = ""
+    ) -> str:
         ttl = self.settings.signed_url_ttl_seconds
         if self.settings.app_env == "gcp":
-            from datetime import timedelta
-            from google.cloud import storage
+            try:
+                from datetime import timedelta
+                from google.cloud import storage
 
-            client = storage.Client(project=self.settings.gcp_project_id)
-            bucket = client.bucket(self.settings.gcs_bucket)
-            blob = bucket.blob(object_path)
-            disposition = f'attachment; filename="{filename}"' if filename else None
-            return blob.generate_signed_url(
-                version="v4",
-                expiration=timedelta(seconds=ttl),
-                method="GET",
-                response_disposition=disposition,
-                **self._gcp_signing_kwargs(),
-            )
+                client = storage.Client(project=self.settings.gcp_project_id)
+                bucket = client.bucket(self.settings.gcs_bucket)
+                blob = bucket.blob(object_path)
+                disposition = f'attachment; filename="{filename}"' if filename else None
+                return blob.generate_signed_url(
+                    version="v4",
+                    expiration=timedelta(seconds=ttl),
+                    method="GET",
+                    response_disposition=disposition,
+                    **self._gcp_signing_kwargs(),
+                )
+            except Exception as exc:
+                print(f"[storage] GCS signed URL failed, falling back to authorized proxy stream: {exc}")
+                token = self._sign_local_token(
+                    {
+                        "op": "download",
+                        "path": object_path,
+                        "filename": filename,
+                        "exp": int(time.time()) + ttl,
+                    }
+                )
+                base = proxy_base_url.rstrip("/")
+                return f"{base}/api/v1/local-storage/download/{token}"
 
         token = self._sign_local_token(
             {

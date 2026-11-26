@@ -154,15 +154,21 @@ async def local_storage_upload(token: str, request: Request):
 
 @app.get("/api/v1/local-storage/download/{token}")
 async def local_storage_download(token: str):
-    if settings.app_env != "local":
-        raise HTTPException(status_code=404, detail="Not available in GCP mode")
     storage = get_storage()
     payload = storage.verify_local_token(token)
     if payload.get("op") != "download":
         raise HTTPException(status_code=403, detail="Invalid download token")
     data = storage.read_bytes(payload["path"])
     filename = payload.get("filename") or payload["path"].split("/")[-1]
-    media_type = "image/png" if filename.endswith(".png") else "image/gif" if filename.endswith(".gif") else "application/octet-stream"
+    media_type = (
+        "video/mp4"
+        if filename.endswith(".mp4")
+        else "image/png"
+        if filename.endswith(".png")
+        else "image/gif"
+        if filename.endswith(".gif")
+        else "application/octet-stream"
+    )
     return Response(
         content=data,
         media_type=media_type,
@@ -253,7 +259,7 @@ async def cancel_or_delete_job(job_id: str, user: UserOut = Depends(get_current_
 
 
 @app.get("/api/v1/assets/{asset_id}/download", response_model=AssetDownloadResponse)
-async def download_asset(asset_id: str, user: UserOut = Depends(get_current_user)):
+async def download_asset(asset_id: str, request: Request, user: UserOut = Depends(get_current_user)):
     store = get_store()
     storage = get_storage()
     found = store.find_asset(asset_id)
@@ -263,7 +269,8 @@ async def download_asset(asset_id: str, user: UserOut = Depends(get_current_user
     if job.user_id != user.id and user.role != UserRole.admin:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    url = storage.create_signed_download_url(asset.object_path, asset.filename)
+    proxy_base = str(request.base_url).rstrip("/").replace("http://", "https://") if settings.app_env == "gcp" else ""
+    url = storage.create_signed_download_url(asset.object_path, asset.filename, proxy_base_url=proxy_base)
     return AssetDownloadResponse(
         asset_id=asset.asset_id,
         download_url=url,
