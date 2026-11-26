@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -20,10 +21,18 @@ def update_firestore_job(job_id: str, fields: dict[str, Any]) -> None:
     project_id = os.environ.get("GCP_PROJECT_ID")
     if not project_id:
         return
+    database = os.environ.get("FIRESTORE_DATABASE", "(default)")
     try:
-        db = firestore.Client(project=project_id)
+        db = firestore.Client(project=project_id, database=database)
         db.collection("jobs").document(job_id).set(fields, merge=True)
     except Exception as exc:
+        if database == "(default)":
+            try:
+                db = firestore.Client(project=project_id, database="default")
+                db.collection("jobs").document(job_id).set(fields, merge=True)
+                return
+            except Exception as exc2:
+                exc = exc2
         print(f"[runner] Warning: Firestore update failed: {exc}", file=sys.stderr)
 
 
@@ -42,12 +51,19 @@ def sync_models_from_gcs(bucket_name: str, workflow: dict[str, Any]) -> None:
             if dest.exists():
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
+            found = False
             for prefix in (f"models/checkpoints/{ckpt_name}", f"checkpoints/{ckpt_name}"):
                 blob = bucket.blob(prefix)
                 if blob.exists():
                     print(f"[runner] Downloading gs://{bucket_name}/{prefix} -> {dest}")
                     blob.download_to_filename(str(dest))
+                    found = True
                     break
+            if not found:
+                raise FileNotFoundError(
+                    f"Checkpoint '{ckpt_name}' not found in gs://{bucket_name}/models/checkpoints/{ckpt_name}. "
+                    f"Upload the model weights to gs://{bucket_name}/models/checkpoints/ first."
+                )
 
 
 def download_gcs_inputs(bucket_name: str, input_uris: list[str]) -> dict[str, Path]:
@@ -72,9 +88,13 @@ def submit_comfy_workflow(workflow: dict[str, Any]) -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-        return data["prompt_id"]
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["prompt_id"]
+    except urllib.error.HTTPError as err:
+        body = err.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"ComfyUI /prompt HTTP {err.code}: {body}") from err
 
 
 def poll_comfy_history(prompt_id: str, timeout_sec: int = 3000) -> dict[str, Any]:
