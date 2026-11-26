@@ -75,13 +75,14 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 gcloud iam service-accounts add-iam-policy-binding "$API_SA" \
   --member="serviceAccount:${API_SA}" --role="roles/iam.serviceAccountTokenCreator"
 
-# Grant Cloud Build service account permission to deploy Cloud Run services & GPU jobs
+# Grant Cloud Build service accounts permission to deploy Cloud Run services & GPU jobs
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')"
-CB_SA="${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${CB_SA}" --role="roles/run.admin"
-gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member="serviceAccount:${CB_SA}" --role="roles/iam.serviceAccountUser"
+for CB_SA in "${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" "${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"; do
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${CB_SA}" --role="roles/run.admin"
+  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${CB_SA}" --role="roles/iam.serviceAccountUser"
+done
 
 echo "==> Setup complete! Next, deploy everything with:"
 echo "    gcloud builds submit --config infra/cloudbuild.yaml ."

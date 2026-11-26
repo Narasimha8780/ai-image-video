@@ -38,7 +38,6 @@ steps:
       - ai-studio-api
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-api@${PROJECT_ID}.iam.gserviceaccount.com
       - --allow-unauthenticated
       - --port=8080
       - --cpu=2

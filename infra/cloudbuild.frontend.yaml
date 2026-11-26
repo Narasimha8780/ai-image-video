@@ -58,7 +58,6 @@ steps:
       - ai-studio-dashboard
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-web@${PROJECT_ID}.iam.gserviceaccount.com
       - --allow-unauthenticated
       - --port=8080
 

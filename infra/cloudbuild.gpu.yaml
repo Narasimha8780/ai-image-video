@@ -39,7 +39,6 @@ steps:
       - ai-image-worker
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-gpu-job@${PROJECT_ID}.iam.gserviceaccount.com
       - --cpu=4
       - --memory=16Gi
       - --gpu=1
@@ -62,7 +61,6 @@ steps:
       - ai-video-worker
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-gpu-job@${PROJECT_ID}.iam.gserviceaccount.com
       - --cpu=4
       - --memory=16Gi
       - --gpu=1

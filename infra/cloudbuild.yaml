@@ -62,7 +62,6 @@ steps:
         gcloud run deploy ai-studio-api \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/backend:${_TAG} \
           --region=${_REGION} \
-          --service-account=ai-api@${PROJECT_ID}.iam.gserviceaccount.com \
           --allow-unauthenticated \
           --port=8080 \
           --cpu=2 --memory=2Gi \
@@ -99,7 +98,6 @@ steps:
       - ai-studio-dashboard
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/dashboard:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-web@${PROJECT_ID}.iam.gserviceaccount.com
       - --allow-unauthenticated
       - --port=8080
 
@@ -115,7 +113,6 @@ steps:
       - ai-image-worker
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-gpu-job@${PROJECT_ID}.iam.gserviceaccount.com
       - --cpu=4
       - --memory=16Gi
       - --gpu=1
@@ -139,7 +136,6 @@ steps:
       - ai-video-worker
       - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/gpu-worker:${_TAG}
       - --region=${_REGION}
-      - --service-account=ai-gpu-job@${PROJECT_ID}.iam.gserviceaccount.com
       - --cpu=4
       - --memory=16Gi
       - --gpu=1
